@@ -14,7 +14,6 @@ impl Bilibili {
         room_id: &str,
         qn: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let client = &self.http_client;
         let room_url = "https://api.live.bilibili.com/xlive/web-room/v2/index/getRoomPlayInfo";
         let mut param = [
             ("room_id", room_id),
@@ -22,10 +21,11 @@ impl Bilibili {
             ("format", "0,1,2"),
             ("codec", "0,1"),
             ("qn", qn.unwrap_or("1000")),
-            ("platform", "h5"),
+            ("platform", "web"),
             ("ptype", "8"),
         ];
-        let resp = client
+        let resp = self
+            .http_client
             .get(room_url)
             .query(&param)
             .send()
@@ -48,7 +48,8 @@ impl Bilibili {
         if qn_max != 1000 {
             let sdf = qn_max.to_string();
             param[4].1 = sdf.as_str();
-            stream_info = client
+            stream_info = self
+                .http_client
                 .get(room_url)
                 .query(&param)
                 .send()
@@ -64,7 +65,7 @@ impl Bilibili {
             .filter(|i| i["format"][0]["format_name"].as_str().unwrap() == "ts")
             .flat_map(|i| {
                 let array = i["format"].as_array().unwrap();
-                let base_url = &array.last().unwrap()["codec"][0]["codec"];
+                let base_url = &array.last().unwrap()["codec"][0]["base_url"];
                 let url_info = &array.last().unwrap()["codec"][0]["url_info"];
                 return url_info
                     .as_array()
@@ -74,10 +75,10 @@ impl Bilibili {
                     .map(|(index, info)| {
                         let host = info["host"].as_str().unwrap();
                         let extra = info["extra"].as_str().unwrap();
-                        return ((
+                        return (
                             format!("线路{}", index + 1),
-                            format!("{}{}{}", host, base_url.clone(), extra),
-                        ));
+                            format!("{}{}{}", host, base_url.as_str().unwrap(), extra),
+                        );
                     });
             })
             .collect::<Vec<_>>();
@@ -88,8 +89,8 @@ impl Bilibili {
 #[async_trait]
 impl IAnalyze for Bilibili {
     async fn get_real_url(&self, room_id: &str) -> Result<(), Box<dyn std::error::Error>> {
-        let client = &self.http_client;
-        let resp = client
+        let resp = self
+            .http_client
             .get("https://api.live.bilibili.com/room/v1/Room/room_init")
             .query(&[("id", room_id)])
             .send()
